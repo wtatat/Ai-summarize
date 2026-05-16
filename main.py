@@ -566,6 +566,12 @@ def too_large(_):
     flash('Файл слишком большой (макс. 2 МБ)', 'warning')
     return redirect(request.referrer or url_for('index'))
 
+@app.errorhandler(500)
+def internal_error(e):
+    import traceback
+    traceback.print_exc()
+    return render_template('error.html', code=500, msg='Внутренняя ошибка сервера'), 500
+
 def init_app():
     os.makedirs('db', exist_ok=True)
     os.makedirs(UPLOAD_DIR, exist_ok=True)
