@@ -51,7 +51,7 @@ api.add_resource(SummarizeResource, '/api/summarize/<topic>')
 @login_manager.user_loader
 def load_user(user_id):
     s = db_session.create_session()
-    return s.query(User).get(int(user_id))
+    return s.get(User, int(user_id))
 
 @app.before_request
 def redirect_guests_to_register():
@@ -76,7 +76,7 @@ def inject_globals():
         unread = 0
         notification_unread_count = 0
         if current_user.is_authenticated:
-            u = s.query(User).get(current_user.id)
+            u = s.get(User, current_user.id)
             if u:
                 read_ids = {n.id for n in u.read_news}
                 unread = s.query(NewsItem).filter(~NewsItem.id.in_(read_ids) if read_ids else true()).count()
@@ -223,7 +223,7 @@ def index():
 
     read_ids = set()
     if current_user.is_authenticated:
-        u = s.query(User).get(current_user.id)
+        u = s.get(User, current_user.id)
         read_ids = {n.id for n in u.read_news}
     unread = sum(1 for n in news if n.id not in read_ids)
 
@@ -280,7 +280,7 @@ def more():
     next_summary_at = None
     if current_user.is_authenticated:
         s = db_session.create_session()
-        user = s.query(User).get(current_user.id)
+        user = s.get(User, current_user.id)
         if form.validate_on_submit() and form.avatar.data:
             old_avatar = user.avatar
             user.avatar = save_upload(form.avatar.data)
@@ -313,7 +313,7 @@ def profile():
 @login_required
 def update_notification_settings():
     s = db_session.create_session()
-    user = s.query(User).get(current_user.id)
+    user = s.get(User, current_user.id)
     raw_interval = request.form.get('interval_hours')
     interval = normalize_interval(raw_interval)
     try:
@@ -341,7 +341,7 @@ def update_notification_settings():
 @login_required
 def send_summary_now():
     s = db_session.create_session()
-    user = s.query(User).get(current_user.id)
+    user = s.get(User, current_user.id)
     deliver_summary(s, user, update_last=True, force_site=True)
     s.commit()
     flash('Сводка отправлена', 'success')
@@ -394,7 +394,7 @@ def sources():
 @login_required
 def toggle_source(sid):
     s = db_session.create_session()
-    src = s.query(Source).get(sid) or abort(404)
+    src = s.get(Source, sid) or abort(404)
     src.is_active = not src.is_active
     s.commit()
     return redirect(url_for('sources'))
@@ -403,7 +403,7 @@ def toggle_source(sid):
 @login_required
 def delete_source(sid):
     s = db_session.create_session()
-    src = s.query(Source).get(sid) or abort(404)
+    src = s.get(Source, sid) or abort(404)
     name = src.name
     removed = s.query(NewsItem).filter(NewsItem.source == name).delete(synchronize_session=False)
     s.delete(src)
@@ -418,8 +418,8 @@ def delete_source(sid):
 @login_required
 def toggle_read(news_id):
     s = db_session.create_session()
-    u = s.query(User).get(current_user.id)
-    n = s.query(NewsItem).get(news_id) or abort(404)
+    u = s.get(User, current_user.id)
+    n = s.get(NewsItem, news_id) or abort(404)
     if n in u.read_news:
         u.read_news.remove(n)
     else:
@@ -431,7 +431,7 @@ def toggle_read(news_id):
 @login_required
 def read_all():
     s = db_session.create_session()
-    u = s.query(User).get(current_user.id)
+    u = s.get(User, current_user.id)
     u.read_news = s.query(NewsItem).all()
     s.commit()
     flash('Все новости отмечены как прочитанные', 'success')
@@ -515,7 +515,7 @@ def summarize_stream(topic):
         if user_id:
             store_session = db_session.create_session()
             try:
-                user = store_session.query(User).get(user_id)
+                user = store_session.get(User, user_id)
                 if user:
                     store_site_summary(store_session, user, header, text)
                     store_session.commit()
@@ -535,7 +535,7 @@ def summary_chat_stream():
         return Response('event: error\ndata: "empty question"\n\n', mimetype='text/event-stream')
 
     s = db_session.create_session()
-    user = s.query(User).get(current_user.id)
+    user = s.get(User, current_user.id)
     summary_text = (user.ai_dialog_summary or '').strip()
     if not summary_text and fallback_summary:
         summary_text = fallback_summary
@@ -558,7 +558,7 @@ def summary_chat_stream():
 
         store_session = db_session.create_session()
         try:
-            store_user = store_session.query(User).get(current_user.id)
+            store_user = store_session.get(User, current_user.id)
             if store_user and summary_text:
                 if not store_user.ai_dialog_summary and summary_text:
                     save_summary_context(store_user, summary_text)
