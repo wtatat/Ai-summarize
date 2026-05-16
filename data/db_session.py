@@ -16,5 +16,5 @@ def global_init(db_file):
     from . import __all_models
     SqlAlchemyBase.metadata.create_all(engine)
 
-def create_session():
+def create_session() -> orm.Session:
     return __factory()
