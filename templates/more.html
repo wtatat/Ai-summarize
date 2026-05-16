@@ -1,0 +1,191 @@
+{% extends "base.html" %}
+{% block title %}Настройки — Brief.{% endblock %}
+{% set active_page = 'profile' %}
+{% set nav_label = 'Профиль' %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <h1 class="page-title small">Настройки</h1>
+  </div>
+  <div class="page-date">v 1.1</div>
+</div>
+
+<div class="profile-page">
+  {% if user %}
+    <section>
+      <div class="profile-header">
+        <div class="avatar">
+          {% if user.avatar %}
+            <img src="{{ url_for('static', filename='uploads/' + user.avatar) }}" alt="" style="width:100%;height:100%;object-fit:cover;">
+          {% else %}{{ user.name[0]|upper }}{% endif %}
+        </div>
+        <div style="min-width:0;flex:1;">
+          <div class="profile-name">{{ user.name }}</div>
+          <div class="profile-email">{{ user.email }}</div>
+        </div>
+        <details style="position:relative;">
+          <summary class="text-button" style="list-style:none;">✎</summary>
+          <form method="post" enctype="multipart/form-data" class="panel" style="position:absolute;right:0;top:26px;z-index:5;width:250px;box-shadow:0 12px 28px rgba(20,23,32,.12);">
+            {{ form.csrf_token }}
+            <label class="form-label">Новый аватар</label>
+            <input type="file" name="avatar" accept="image/*" required style="font-size:12px;margin-bottom:12px;">
+            {% for e in form.avatar.errors %}<div style="color:var(--signal);font-size:12px;margin-bottom:8px;">{{ e }}</div>{% endfor %}
+            <button type="submit" class="btn btn-primary" style="width:100%;">Загрузить</button>
+          </form>
+        </details>
+      </div>
+
+      <div class="stats-row">
+        <div class="stat-box">
+          <div class="stat-number">{{ read_count }}</div>
+          <div class="stat-label">Прочитано</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number">{{ sidebar_total_news }}</div>
+          <div class="stat-label">Сводок</div>
+        </div>
+        <div class="stat-box">
+          <div class="stat-number">{{ notification_unread_count }}</div>
+          <div class="stat-label">Уведомлений</div>
+        </div>
+      </div>
+
+      <div class="section-title" style="margin:20px 0 4px;">Сводки по расписанию</div>
+      <form action="{{ url_for('update_notification_settings') }}" method="post" class="settings-panel">
+        <div class="settings-item">
+          <div>
+            <div class="settings-label">Включить уведомления</div>
+            <div class="settings-desc">
+              {% if next_summary_at %}
+                Следующая отправка: {{ next_summary_at.strftime('%d.%m %H:%M') }}
+              {% else %}
+                Сводки будут приходить по выбранному интервалу
+              {% endif %}
+            </div>
+          </div>
+          <input type="checkbox" name="enabled" class="toggle" {% if user.summary_notify_enabled %}checked{% endif %}>
+        </div>
+
+        <label class="settings-field">
+          <span class="settings-label">Интервал, часы</span>
+          <input class="form-input" type="number" name="interval_hours" min="2" step="1" value="{{ user.summary_notify_interval_hours or 2 }}">
+        </label>
+
+        <div class="settings-field">
+          <div class="settings-label">Каналы</div>
+          <label class="check-row"><input type="checkbox" name="site" value="1" {% if user.summary_notify_site %}checked{% endif %}> На сайте</label>
+        </div>
+
+        <div class="settings-field">
+          <div class="settings-label">Темы</div>
+          <div class="topic-checks">
+            {% for tid, emoji, label in notify_topics if tid != 'all' %}
+              <label>
+                <input type="checkbox" name="topics" value="{{ tid }}" {% if tid in selected_notify_topics %}checked{% endif %}>
+                {{ label }}
+              </label>
+            {% endfor %}
+          </div>
+          <div class="settings-desc">Если ничего не выбрать, придут все темы.</div>
+        </div>
+
+        <div style="display:flex;gap:10px;margin-top:12px;">
+          <button type="submit" class="btn btn-primary" style="flex:1;">Сохранить</button>
+          <button formaction="{{ url_for('send_summary_now') }}" formmethod="post" class="btn btn-ghost" style="flex:1;">Отправить сейчас</button>
+        </div>
+      </form>
+
+      <div class="section-title" style="margin:20px 0 4px;">Уведомления</div>
+      <div class="notification-list">
+        {% if notifications %}
+          <form action="{{ url_for('mark_notifications_read') }}" method="post" style="margin-bottom:10px;">
+            <button class="btn btn-ghost" style="width:100%;">Отметить прочитанными</button>
+          </form>
+          {% for item in notifications %}
+            <article class="notification-card {% if not item.is_read %}unread{% endif %}">
+              <div class="settings-label">{{ item.title }}</div>
+              <div class="settings-desc">{{ item.created_at.strftime('%d.%m %H:%M') }}</div>
+              <pre>{{ item.body }}</pre>
+            </article>
+          {% endfor %}
+        {% else %}
+          <div class="settings-desc" style="padding:14px 0;">Пока пусто.</div>
+        {% endif %}
+      </div>
+
+      <div class="section-title" style="margin:20px 0 4px;">Предпочтения</div>
+      {% for label, desc, key, default in [
+        ('Уведомления', 'Локальные настройки интерфейса', 'notifications', '1'),
+        ('Автообновление', 'Каждые 15 минут', 'autoRefresh', '1'),
+        ('Тёмная тема', 'Системная · вручную', 'darkMode', '0'),
+        ('Компактный режим', 'Плотная версия ленты', 'compact', '0')
+      ] %}
+        <div class="settings-item">
+          <div>
+            <div class="settings-label">{{ label }}</div>
+            <div class="settings-desc">{{ desc }}</div>
+          </div>
+          <input type="checkbox" class="toggle settings-toggle" data-toggle="{{ key }}" data-default="{{ default }}">
+        </div>
+      {% endfor %}
+
+      <div class="section-title" style="margin:20px 0 4px;">Данные</div>
+      <button type="button" id="clearCache" class="settings-row" style="width:100%;border-left:0;border-right:0;border-top:0;background:var(--surface);text-align:left;cursor:pointer;">
+        <span class="settings-label">Очистить кэш сводок</span>
+        <span style="color:var(--ink-3);font-size:12px;" id="cacheSize">—</span>
+      </button>
+
+      <a href="{{ url_for('logout') }}" class="btn btn-ghost" style="width:100%;margin-top:18px;color:var(--signal);">Выйти из аккаунта</a>
+    </section>
+  {% else %}
+    <section class="panel" style="text-align:center;">
+      <div style="font-family:var(--f-display);font-size:28px;margin-bottom:8px;">Войдите в Brief<span class="dot">.</span></div>
+      <p style="margin:0 0 22px;color:var(--ink-3);">Сохраняйте прочитанное, добавляйте источники и возвращайтесь к сводкам.</p>
+      <div style="display:flex;gap:10px;">
+        <a href="{{ url_for('login') }}" class="btn btn-primary" style="flex:1;">Войти</a>
+        <a href="{{ url_for('register') }}" class="btn btn-ghost" style="flex:1;">Регистрация</a>
+      </div>
+    </section>
+  {% endif %}
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+document.querySelectorAll(".settings-toggle").forEach(t => {
+  const key = `pref:${t.dataset.toggle}`;
+  const stored = localStorage.getItem(key);
+  t.checked = stored === null ? t.dataset.default === "1" : stored === "1";
+  t.addEventListener("change", () => localStorage.setItem(key, t.checked ? "1" : "0"));
+});
+
+function calcCacheSize() {
+  let size = 0;
+  for (let i = 0; i < localStorage.length; i++) {
+    const k = localStorage.key(i);
+    if (k && k.startsWith("summary:")) size += k.length + (localStorage.getItem(k) || "").length;
+  }
+  return size;
+}
+function fmtSize(b) {
+  if (b < 1024) return `${b} Б`;
+  if (b < 1048576) return `${(b / 1024).toFixed(1)} КБ`;
+  return `${(b / 1048576).toFixed(1)} МБ`;
+}
+const cacheSize = document.getElementById("cacheSize");
+if (cacheSize) cacheSize.textContent = fmtSize(calcCacheSize());
+const clearCache = document.getElementById("clearCache");
+if (clearCache) {
+  clearCache.addEventListener("click", () => {
+    const keys = [];
+    for (let i = 0; i < localStorage.length; i++) {
+      const k = localStorage.key(i);
+      if (k && k.startsWith("summary:")) keys.push(k);
+    }
+    keys.forEach(k => localStorage.removeItem(k));
+    if (cacheSize) cacheSize.textContent = fmtSize(0);
+  });
+}
+</script>
+{% endblock %}

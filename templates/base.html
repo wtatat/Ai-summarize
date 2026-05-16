@@ -1,0 +1,134 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>{% block title %}Brief.{% endblock %}</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body data-cookie-image-url="{{ url_for('cookie_image') }}" data-cookie-archive-url="{{ url_for('cookie_archive') }}">
+  <div class="desktop-crumb">Главная · {{ nav_label or 'Лента' }}</div>
+
+  <div class="app-layout">
+    <aside class="sidebar-left">
+      <a href="{{ url_for('index') }}" class="logo">Brief<span>.</span></a>
+
+      <nav class="nav-list">
+        <a href="{{ url_for('index') }}" class="nav-item {% if active_page == 'feed' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H5V10.5Z"/><path d="M9 21v-7h6v7"/></svg>
+          <span>Лента</span>
+          {% if unread_count %}<span class="nav-badge">{{ unread_count }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('summarize_page') }}" class="nav-item {% if active_page == 'summary' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M4.93 4.93l14.14 14.14M2 12h20M4.93 19.07 19.07 4.93"/></svg>
+          <span>Сводка</span>
+        </a>
+        <a href="{{ url_for('sources') }}" class="nav-item {% if active_page == 'sources' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+          <span>Источники</span>
+          {% if sidebar_sources %}<span class="nav-badge">{{ sidebar_sources|length }}</span>{% endif %}
+        </a>
+        <a href="{{ url_for('more') }}" class="nav-item {% if active_page == 'profile' %}active{% endif %}">
+          <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="12" cy="8" r="4"/><path d="M4 21a8 8 0 0 1 16 0"/></svg>
+          <span>Профиль</span>
+          {% if notification_unread_count %}<span class="nav-badge">{{ notification_unread_count }}</span>{% endif %}
+        </a>
+      </nav>
+
+      <div class="activity-bar">
+        <div class="activity-label">Активность</div>
+        <div class="activity-bars">
+          {% set heights = [11, 17, 23, 19, 27, 31, 24, 21, 29, 34, 25, 30] %}
+          {% for h in heights %}
+            <div class="activity-bar-item {% if loop.index == 10 %}active{% endif %}" style="height: {{ h }}px"></div>
+          {% endfor %}
+        </div>
+        <div class="activity-meta"><span>12 часов</span><span>+24%</span></div>
+      </div>
+    </aside>
+
+    <main class="main-content">
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% if msgs %}
+          {% for cat, m in msgs %}
+            <div class="flash flash-{{ cat if cat in ['danger','warning','success','info'] else 'info' }}">{{ m }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+      {% block content %}{% endblock %}
+    </main>
+
+    <aside class="sidebar-right">
+      <div class="section-title">В прямом эфире</div>
+      <div style="overflow:hidden;margin-bottom:22px;padding:8px 0;border-top:1px solid var(--rule);border-bottom:1px solid var(--rule);">
+        <div style="font-family:var(--f-mono);font-size:11px;color:var(--ink-2);white-space:nowrap;">• ЦБ ставка 16% — без изменений</div>
+      </div>
+
+      {% if sidebar_topics %}
+        <div class="section-title">Темы</div>
+        <div style="margin-bottom:22px;">
+          {% for tid, emoji, label, cnt in sidebar_topics %}
+            <a class="topic-row" href="{{ url_for('index', topic=tid) }}">
+              <span>{{ label }}</span><span class="topic-count">{{ cnt }}</span>
+            </a>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      {% if sidebar_sources %}
+        <div class="section-title">Активные источники</div>
+        <div style="margin-bottom:22px;">
+          {% for src in sidebar_sources[:5] %}
+            {% set tag = 'TG' if src.type == 'telegram' else 'WEB' %}
+            {% set chip = 'chip-tg' if src.type == 'telegram' else 'chip-web' %}
+            <div class="source-row">
+              <div class="source-info" style="flex:1;">
+                <div class="source-letter">
+                  {% if src.icon and '.' in src.icon %}
+                    <img src="{{ url_for('static', filename='uploads/' + src.icon) }}" alt="" style="width:100%;height:100%;object-fit:cover;">
+                  {% else %}{{ (src.icon or src.name[0])|upper }}{% endif %}
+                </div>
+                <div style="min-width:0;">
+                  <div class="source-name">{{ src.name }}</div>
+                </div>
+              </div>
+              <span class="chip {{ chip }}">{{ tag }}</span>
+            </div>
+          {% endfor %}
+        </div>
+      {% endif %}
+
+      <div class="ai-card">
+        <div class="section-title" style="color:rgba(255,255,255,.5);margin-bottom:0;">AI · Сводка</div>
+        <div class="ai-card-title">Прочитать всё за 6 секунд?</div>
+        <p>Сжать {{ sidebar_total_news or '47' }} материалов в одну верстку с заголовками и тезисами.</p>
+        <a href="{{ url_for('summarize_page') }}" class="btn">Сгенерировать</a>
+      </div>
+    </aside>
+  </div>
+
+  <nav class="mobile-nav">
+    <div class="mobile-nav-inner">
+      <a href="{{ url_for('index') }}" class="mobile-nav-item {% if active_page == 'feed' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 10.5 12 3l9 7.5V21H5V10.5Z"/><path d="M9 21v-7h6v7"/></svg>
+        <span>Лента</span>
+      </a>
+      <a href="{{ url_for('sources') }}" class="mobile-nav-item {% if active_page == 'sources' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 11a9 9 0 0 1 9 9"/><path d="M4 4a16 16 0 0 1 16 16"/><circle cx="5" cy="19" r="1"/></svg>
+        <span>Источники</span>
+      </a>
+      <a href="{{ url_for('summarize_page') }}" class="mobile-nav-item {% if active_page == 'summary' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M4.93 4.93l14.14 14.14M2 12h20M4.93 19.07 19.07 4.93"/></svg>
+        <span>Сводка</span>
+      </a>
+      <a href="{{ url_for('more') }}" class="mobile-nav-item {% if active_page == 'profile' %}active{% endif %}">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 5v14M5 12h14"/></svg>
+        <span>Ещё{% if notification_unread_count %} · {{ notification_unread_count }}{% endif %}</span>
+      </a>
+    </div>
+  </nav>
+
+  <script src="{{ url_for('static', filename='js/app.js', v='cookie-random') }}"></script>
+  {% block scripts %}{% endblock %}
+</body>
+</html>

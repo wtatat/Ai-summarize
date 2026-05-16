@@ -1,0 +1,137 @@
+{% extends "base.html" %}
+{% block title %}Источники — Brief.{% endblock %}
+{% set active_page = 'sources' %}
+{% set nav_label = 'Источники' %}
+
+{% block content %}
+{% set active_count = sources|selectattr('is_active')|list|length %}
+{% set selected_source_type = form.type.data or 'telegram' %}
+
+<div class="page-header">
+  <div>
+    <h1 class="page-title small">Источники</h1>
+  </div>
+  <div class="page-date">
+    <span style="color:var(--ink);">{{ active_count }}</span> / {{ sources|length }} активны
+  </div>
+</div>
+
+<div class="sources-page">
+  <div class="sources-header">
+    <form method="get" action="{{ url_for('sources') }}" class="search-bar">
+      <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+      <input type="text" name="q" placeholder="Поиск источников" autocomplete="off">
+    </form>
+    <button type="button" class="btn btn-primary" onclick="document.getElementById('addForm').open = true; document.getElementById('addForm').scrollIntoView({behavior:'smooth', block:'start'});">
+      + Добавить источник
+    </button>
+  </div>
+
+  <details id="addForm" class="panel source-form-panel" {% if form.errors %}open{% endif %}>
+    <summary style="list-style:none;cursor:pointer;display:flex;align-items:center;justify-content:space-between;">
+      <span class="section-title" style="margin:0;">Новый источник</span>
+      <span style="color:var(--ink-3);font-size:18px;">×</span>
+    </summary>
+
+    <form method="post" enctype="multipart/form-data" style="margin-top:14px;">
+      {{ form.csrf_token }}
+
+      <div class="segmented segmented-two">
+        {% for t_id, t_label in [('telegram', 'Telegram'), ('website', 'Сайт')] %}
+          <label class="{% if selected_source_type == t_id %}is-active{% endif %}">
+            <input type="radio" name="type" value="{{ t_id }}" data-source-type="{{ t_id }}" {% if selected_source_type == t_id %}checked{% endif %} style="display:none;">
+            {{ t_label }}
+          </label>
+        {% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Название</label>
+        <input id="sourceNameInput" type="text" name="name" class="form-input" placeholder="Дуров" required value="{{ form.name.data or '' }}">
+        {% for e in form.name.errors %}<div style="color:var(--signal);font-size:12px;margin-top:4px;">{{ e }}</div>{% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">URL</label>
+        <input id="sourceUrlInput" type="url" name="url" class="form-input" placeholder="https://t.me/durov" required value="{{ form.url.data or '' }}">
+        <div id="sourceUrlExample" style="color:var(--ink-3);font-family:var(--f-mono);font-size:10.5px;margin-top:5px;"></div>
+        {% for e in form.url.errors %}<div style="color:var(--signal);font-size:12px;margin-top:4px;">{{ e }}</div>{% endfor %}
+      </div>
+
+      <div class="form-group">
+        <label class="form-label">Иконка</label>
+        <input type="file" name="icon" accept="image/*" style="font-size:12px;color:var(--ink-3);">
+        {% for e in form.icon.errors %}<div style="color:var(--signal);font-size:12px;margin-top:4px;">{{ e }}</div>{% endfor %}
+      </div>
+
+      <div class="form-actions">
+        <a href="{{ url_for('sources') }}" class="btn btn-ghost" style="flex:1;">Отмена</a>
+        <button type="submit" class="btn btn-primary" style="flex:1;">Добавить</button>
+      </div>
+    </form>
+  </details>
+
+  <div style="display:flex;align-items:center;justify-content:space-between;margin:18px 0 8px;">
+    <span class="section-title" style="margin:0;">Все источники</span>
+    <form method="post" action="{{ url_for('reload_news') }}" style="margin:0;" onsubmit="return confirm('Удалить текущие новости и заново загрузить?')">
+      <button type="submit" class="text-button" style="font-family:var(--f-mono);font-size:10px;letter-spacing:.08em;text-transform:uppercase;">↻ Перезагрузить</button>
+    </form>
+  </div>
+
+  <div class="source-list">
+    {% for s in sources %}
+      {% set chip = 'chip-tg' if s.type == 'telegram' else 'chip-web' %}
+      {% set tag = 'TG' if s.type == 'telegram' else 'WEB' %}
+      <div class="source-list-row {% if not s.is_active %}off{% endif %}">
+        <div class="source-icon">
+          {% if s.icon and '.' in s.icon %}
+            <img src="{{ url_for('static', filename='uploads/' + s.icon) }}" alt="" style="width:100%;height:100%;object-fit:cover;">
+          {% else %}{{ (s.icon or s.name[0])|upper }}{% endif %}
+        </div>
+        <div style="min-width:0;flex:1;">
+          <div class="source-name">{{ s.name }} <span class="chip {{ chip }}">{{ tag }}</span></div>
+          <div class="source-url">{{ s.url }}</div>
+        </div>
+        <form method="post" action="{{ url_for('toggle_source', sid=s.id) }}" style="margin:0;display:flex;">
+          <input type="checkbox" class="toggle" {% if s.is_active %}checked{% endif %} onchange="this.form.submit()">
+        </form>
+        <form method="post" action="{{ url_for('delete_source', sid=s.id) }}" style="margin:0;" onsubmit="return confirm('Удалить источник?')">
+          <button type="submit" class="text-button" title="Удалить" style="padding:6px;color:var(--ink-4);">⌫</button>
+        </form>
+      </div>
+    {% else %}
+      <div class="empty-state" style="text-align:center;margin-top:16px;">
+        <div style="font-family:var(--f-display);font-size:26px;margin-bottom:6px;">Пусто.</div>
+        <div style="color:var(--ink-3);font-size:13px;">Добавьте RSS-ленту, сайт или Telegram-канал.</div>
+      </div>
+    {% endfor %}
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const sourceExamples = {
+  telegram: { name: "Дуров", url: "https://t.me/durov", hint: "напр. https://t.me/durov или https://t.me/rian_ru" },
+  website: { name: "Lenta.ru", url: "https://lenta.ru", hint: "напр. https://lenta.ru или https://techcrunch.com" }
+};
+const nameInput = document.getElementById("sourceNameInput");
+const urlInput = document.getElementById("sourceUrlInput");
+const hintEl = document.getElementById("sourceUrlExample");
+function applySourceExample(type) {
+  const d = sourceExamples[type] || sourceExamples.telegram;
+  if (nameInput) nameInput.placeholder = d.name;
+  if (urlInput) urlInput.placeholder = d.url;
+  if (hintEl) hintEl.textContent = d.hint;
+}
+document.querySelectorAll("[data-source-type]").forEach(input => {
+  input.addEventListener("change", () => {
+    applySourceExample(input.value);
+    document.querySelectorAll("[data-source-type]").forEach(other => {
+      other.parentElement.classList.toggle("is-active", other.checked);
+    });
+  });
+  if (input.checked) applySourceExample(input.value);
+});
+</script>
+{% endblock %}

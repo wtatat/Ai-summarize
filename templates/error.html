@@ -1,0 +1,15 @@
+{% extends "base.html" %}
+{% block title %}{{ code }} — Brief.{% endblock %}
+{% set active_page = 'feed' %}
+{% set nav_label = '404' %}
+
+{% block content %}
+<div class="error-page">
+  <div>
+    <div class="error-code">{{ code }}</div>
+    <div class="eyebrow">Ошибка</div>
+    <div class="error-title">{{ msg }}</div>
+    <a href="{{ url_for('index') }}" class="btn btn-ghost">На главную →</a>
+  </div>
+</div>
+{% endblock %}

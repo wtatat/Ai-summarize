@@ -1,0 +1,277 @@
+{% extends "base.html" %}
+{% block title %}Лента — Brief.{% endblock %}
+{% set active_page = 'feed' %}
+{% set nav_label = 'Лента' %}
+
+{% block content %}
+{% set topic_counts_map = {} %}
+{% for tid, emoji, label, cnt in (sidebar_topics or []) %}
+  {% set _ = topic_counts_map.update({tid: cnt}) %}
+{% endfor %}
+
+<div class="page-header">
+  <div>
+    <div class="page-meta">AI News Dispatch · No. {{ news|length }}</div>
+    <h1 class="page-title">Brief<span class="dot">.</span></h1>
+  </div>
+  <div class="page-date" id="page-date">
+    Пятница, 15 мая 2026 г.<br>
+    Утренний выпуск · {{ news|length }} материалов
+  </div>
+</div>
+
+<form method="get" action="{{ url_for('index') }}" class="toolbar-row">
+  <input type="hidden" id="selectedTopicsInput" name="topics" value="{{ selected_topics|join(',') }}">
+  <input type="hidden" id="selectedSourcesInput" name="sources" value="{{ selected_sources|join(',') }}">
+  <div class="search-bar">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><circle cx="11" cy="11" r="8"/><path d="m21 21-4.35-4.35"/></svg>
+    <input type="text" name="q" value="{{ query or '' }}" placeholder="Поиск по {{ news|length }} материалам" autocomplete="off">
+    <span class="kbd">⌘ K</span>
+  </div>
+  <button class="btn" type="button" id="topicMenuButton">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M3 5h18M6 12h12M10 19h4"/></svg>
+    Темы <span class="pill-count" id="selectedTopicCount">{% if selected_topics and 'all' not in selected_topics %}{{ selected_topics|length }}{% else %}Все{% endif %}</span>
+  </button>
+  <button class="btn" type="button" id="sourceMenuButton">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M4 6h16M4 12h16M4 18h10"/><circle cx="18" cy="18" r="2"/></svg>
+    Источники <span class="pill-count" id="selectedSourceCount">{% if selected_sources and 'all' not in selected_sources %}{{ selected_sources|length }}{% else %}Все{% endif %}</span>
+  </button>
+  <a href="{{ url_for('summarize_page') }}" class="btn btn-signal">
+    <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2"><path d="M12 2v20M4.93 4.93l14.14 14.14M2 12h20M4.93 19.07 19.07 4.93"/></svg>
+    Сводка
+  </a>
+</form>
+
+<div class="topic-rail">
+  {% for tid, emoji, label in topics %}
+    {% set cnt = (sidebar_total_news or news|length) if tid == 'all' else topic_counts_map.get(tid, 0) %}
+    {% set is_active = (tid == 'all' and ('all' in selected_topics or not selected_topics)) or (tid in selected_topics) %}
+    <button type="button" data-topic="{{ tid }}" class="pill topic-pill {% if is_active %}pill-default{% endif %}">
+      {{ label }}{% if cnt %}<span class="pill-count">{{ cnt }}</span>{% endif %}
+    </button>
+  {% endfor %}
+</div>
+
+{% if source_options %}
+  <div class="source-filter-row" id="sourceRail">
+    {% set all_sources_active = ('all' in selected_sources or not selected_sources) %}
+    <button type="button" data-source="all" class="pill source-pill {% if all_sources_active %}pill-default{% endif %}">
+      Все источники <span class="pill-count">{{ sidebar_total_news or news|length }}</span>
+    </button>
+    {% for src in source_options %}
+      {% set is_active = src.name in selected_sources %}
+      {% set chip = 'chip-tg' if src.type == 'telegram' else 'chip-web' %}
+      {% set tag = 'TG' if src.type == 'telegram' else 'WEB' %}
+      <button type="button"
+              data-source="{{ src.name }}"
+              class="pill source-pill {% if is_active %}pill-default{% endif %} {% if not src.is_active %}source-pill-off{% endif %}"
+              title="{{ src.name }}">
+        <span class="chip {{ chip }}">{{ tag }}</span>
+        <span class="source-pill-name">{{ src.name }}</span>
+        {% if src.count %}<span class="pill-count">{{ src.count }}</span>{% endif %}
+      </button>
+    {% endfor %}
+  </div>
+{% endif %}
+
+<div class="mobile-statbar" style="display:none;justify-content:space-between;align-items:center;padding:10px 18px;border-bottom:1px solid var(--rule);background:var(--paper-2);font-family:var(--f-mono);font-size:10px;letter-spacing:.06em;text-transform:uppercase;color:var(--ink-3);">
+  <span>{{ news|length }} материалов · {{ unread }} непроч.</span>
+  {% if current_user.is_authenticated and unread %}
+    <form method="post" action="{{ url_for('read_all') }}" style="margin:0;"><button class="text-button" style="color:var(--signal);font-family:var(--f-mono);font-size:10px;font-weight:700;">Прочитать всё</button></form>
+  {% else %}
+    <a href="{{ url_for('refresh') }}" style="color:var(--signal);font-weight:700;">Обновить</a>
+  {% endif %}
+</div>
+
+{% if news %}
+  {% set lead = news[0] %}
+  {% set lead_read = current_user.is_authenticated and lead.id in read_ids %}
+
+  <section class="lead-layout">
+    <article class="lead-main">
+      <div class="news-header">
+        <span class="chip chip-signal">Главное</span>
+        <span class="news-source">{{ lead.source }} · {{ lead.published_at|time_ago }}</span>
+      </div>
+      <h2 class="news-title">{{ lead.title }}</h2>
+      <p class="news-excerpt">
+        {{ lead.summary }}{% if lead.full_text and lead.full_text != lead.summary %} {{ lead.full_text[:320] }}{% endif %}
+      </p>
+      <div class="news-footer">
+        <span>{{ ((lead.full_text or lead.summary)|length // 1000 + 1) }} мин чтения</span>
+        <span>·</span>
+        <span style="font-family:var(--f-mono);">★ {{ 100 + (lead.id * 7) % 200 }} цитирования</span>
+        {% if current_user.is_authenticated %}
+          <form method="post" action="{{ url_for('toggle_read', news_id=lead.id) }}" class="inline-form">
+            <button type="submit"
+                    class="text-button read-action {% if lead_read %}is-on{% endif %}"
+                    title="{% if lead_read %}Убрать отметку прочитано{% else %}Отметить новость прочитанной{% endif %}"
+                    aria-label="{% if lead_read %}Убрать отметку прочитано{% else %}Отметить новость прочитанной{% endif %}"
+                    style="{% if lead_read %}color:var(--signal);{% endif %}">
+              {% if lead_read %}✓ Прочитано{% else %}✓ Отметить прочитанным{% endif %}
+            </button>
+          </form>
+        {% endif %}
+        {% if lead.url %}
+          <a href="{{ lead.url }}" target="_blank" rel="noopener" class="text-button" style="margin-left:auto;">Источник</a>
+        {% endif %}
+      </div>
+    </article>
+
+    <aside class="lead-aside">
+      <div class="section-title">Также сегодня</div>
+      {% for n in news[1:4] %}
+        <a href="{{ n.url or '#' }}" target="_blank" rel="noopener" class="side-card">
+          <div class="side-source">{{ n.source }} · {{ n.published_at|time_ago }}</div>
+          <div class="side-title">{{ n.title }}</div>
+        </a>
+      {% endfor %}
+    </aside>
+  </section>
+
+  <section class="news-grid">
+    {% for n in news[1:] %}
+      {% set is_read = current_user.is_authenticated and n.id in read_ids %}
+      {% set chip = 'chip-rss' if n.source_type == 'rss' else ('chip-web' if n.source_type == 'website' else ('chip-vk' if n.source_type == 'vk' else 'chip-tg')) %}
+      {% set tag = 'RSS' if n.source_type == 'rss' else ('WEB' if n.source_type == 'website' else ('VK' if n.source_type == 'vk' else 'TG')) %}
+      <article class="news-card {% if not is_read %}unread{% endif %}">
+        <div class="news-header">
+          <span class="chip {{ chip }}">{{ tag }}</span>
+          <span class="news-source">{{ n.source }} · {{ n.published_at|time_ago }}</span>
+        </div>
+        <h2 class="news-title">{{ n.title }}</h2>
+        <p class="news-excerpt">{{ n.summary }}</p>
+        <div class="news-footer">
+          {% if current_user.is_authenticated %}
+            <form method="post" action="{{ url_for('toggle_read', news_id=n.id) }}" class="inline-form">
+              <button type="submit"
+                      class="text-button read-action {% if is_read %}is-on{% endif %}"
+                      title="{% if is_read %}Убрать отметку прочитано{% else %}Отметить новость прочитанной{% endif %}"
+                      aria-label="{% if is_read %}Убрать отметку прочитано{% else %}Отметить новость прочитанной{% endif %}"
+                      style="{% if is_read %}color:var(--signal);{% endif %}">
+                {% if is_read %}✓ Прочитано{% else %}✓ Отметить прочитанным{% endif %}
+              </button>
+            </form>
+          {% endif %}
+          {% if n.url %}
+            <a href="{{ n.url }}" target="_blank" rel="noopener" class="text-button">Источник</a>
+          {% endif %}
+        </div>
+      </article>
+    {% endfor %}
+  </section>
+
+  {% if current_user.is_authenticated and unread %}
+    <form method="post" action="{{ url_for('read_all') }}" style="margin-top:24px;">
+      <button type="submit" class="btn btn-ghost" style="width:100%;">Отметить всё прочитанным</button>
+    </form>
+  {% endif %}
+{% else %}
+  <div class="empty-state" style="text-align:center;padding:60px 20px;">
+    <div style="font-family:var(--f-display);font-size:32px;margin-bottom:8px;">Тишина.</div>
+    <div style="color:var(--ink-3);margin-bottom:20px;">По этому запросу ничего нет.</div>
+    <a href="{{ url_for('refresh') }}" class="btn btn-primary">Загрузить новости</a>
+  </div>
+{% endif %}
+{% endblock %}
+
+{% block scripts %}
+<script>
+(() => {
+  const days = ["воскресенье", "понедельник", "вторник", "среда", "четверг", "пятница", "суббота"];
+  const months = ["января", "февраля", "марта", "апреля", "мая", "июня", "июля", "августа", "сентября", "октября", "ноября", "декабря"];
+  const d = new Date();
+  const el = document.getElementById("page-date");
+  if (!el) return;
+  const day = days[d.getDay()];
+  const date = `${day.charAt(0).toUpperCase() + day.slice(1)}, ${d.getDate()} ${months[d.getMonth()]} ${d.getFullYear()} г.`;
+  el.innerHTML = `${date}<br>Утренний выпуск · {{ news|length }} материалов`;
+})();
+
+(() => {
+  const selectedTopics = new Set({{ selected_topics|tojson }});
+  const selectedSources = new Set({{ selected_sources|tojson }});
+  const topicInput = document.getElementById("selectedTopicsInput");
+  const sourceInput = document.getElementById("selectedSourcesInput");
+  const topicCount = document.getElementById("selectedTopicCount");
+  const sourceCount = document.getElementById("selectedSourceCount");
+  const search = document.querySelector(".search-bar input");
+
+  function valueOf(selected) {
+    return selected.size === 0 || selected.has("all") ? "all" : Array.from(selected).join(",");
+  }
+
+  function syncPills(selector, selected, dataName) {
+    const allActive = selected.size === 0 || selected.has("all");
+    document.querySelectorAll(selector).forEach(btn => {
+      const id = btn.dataset[dataName];
+      btn.classList.toggle("pill-default", id === "all" ? allActive : selected.has(id));
+    });
+  }
+
+  function sync() {
+    const topicValue = valueOf(selectedTopics);
+    const sourceValue = valueOf(selectedSources);
+    if (topicInput) topicInput.value = topicValue;
+    if (sourceInput) sourceInput.value = sourceValue;
+    if (topicCount) topicCount.textContent = topicValue === "all" ? "Все" : selectedTopics.size;
+    if (sourceCount) sourceCount.textContent = sourceValue === "all" ? "Все" : selectedSources.size;
+    syncPills(".topic-pill", selectedTopics, "topic");
+    syncPills(".source-pill", selectedSources, "source");
+  }
+
+  function navigate() {
+    const url = new URL(location.href);
+    const topics = valueOf(selectedTopics);
+    const sources = valueOf(selectedSources);
+    url.searchParams.delete("topic");
+    url.searchParams.delete("source");
+    if (topics === "all") url.searchParams.delete("topics");
+    else url.searchParams.set("topics", topics);
+    if (sources === "all") url.searchParams.delete("sources");
+    else url.searchParams.set("sources", sources);
+    const q = search ? search.value.trim() : "";
+    if (q) url.searchParams.set("q", q);
+    else url.searchParams.delete("q");
+    location.href = url.toString();
+  }
+
+  function toggle(selected, id) {
+    if (id === "all") {
+      selected.clear();
+      selected.add("all");
+    } else {
+      selected.delete("all");
+      selected.has(id) ? selected.delete(id) : selected.add(id);
+      if (selected.size === 0) selected.add("all");
+    }
+    sync();
+    navigate();
+  }
+
+  document.querySelectorAll(".topic-pill").forEach(btn => {
+    btn.addEventListener("click", () => toggle(selectedTopics, btn.dataset.topic));
+  });
+
+  document.querySelectorAll(".source-pill").forEach(btn => {
+    btn.addEventListener("click", () => toggle(selectedSources, btn.dataset.source));
+  });
+
+  const topicMenuButton = document.getElementById("topicMenuButton");
+  if (topicMenuButton) {
+    topicMenuButton.addEventListener("click", () => {
+      document.querySelector(".topic-rail")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }
+
+  const sourceMenuButton = document.getElementById("sourceMenuButton");
+  if (sourceMenuButton) {
+    sourceMenuButton.addEventListener("click", () => {
+      document.querySelector("#sourceRail")?.scrollIntoView({ block: "nearest", behavior: "smooth" });
+    });
+  }
+
+  sync();
+})();
+</script>
+{% endblock %}

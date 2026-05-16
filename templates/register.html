@@ -1,0 +1,53 @@
+<!DOCTYPE html>
+<html lang="ru">
+<head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0">
+  <title>Регистрация — Brief.</title>
+  <link rel="stylesheet" href="{{ url_for('static', filename='css/style.css') }}">
+</head>
+<body data-cookie-image-url="{{ url_for('cookie_image') }}" data-cookie-archive-url="{{ url_for('cookie_archive') }}">
+  <main class="auth-layout">
+    <section class="form-page">
+      {% with msgs = get_flashed_messages(with_categories=true) %}
+        {% if msgs %}
+          {% for cat, m in msgs %}
+            <div class="flash flash-{{ cat if cat in ['danger','warning','success','info'] else 'info' }}">{{ m }}</div>
+          {% endfor %}
+        {% endif %}
+      {% endwith %}
+
+      <div class="auth-top">
+        <div class="eyebrow"># 02</div>
+        <a href="{{ url_for('index') }}" class="form-logo">Brief<span class="dot">.</span></a>
+        <div class="eyebrow">Регистрация</div>
+      </div>
+
+      <h1 class="auth-title">Создайте аккаунт.</h1>
+      <p class="form-subtitle">Свои источники, прочитанное и сводки — на всех устройствах.</p>
+
+      <form method="post" novalidate>
+        {{ form.csrf_token }}
+        {% for field, label, placeholder in [
+          (form.name, 'Имя', 'Алексей'),
+          (form.email, 'Email', 'you@mail.com'),
+          (form.password, 'Пароль', '••••••••'),
+          (form.password2, 'Повтор пароля', '••••••••')
+        ] %}
+          <div class="form-group">
+            <label class="form-label">{{ label }}</label>
+            {{ field(class='form-input', placeholder=placeholder) }}
+            {% for e in field.errors %}<div style="color:var(--signal);font-size:12px;margin-top:4px;">{{ e }}</div>{% endfor %}
+          </div>
+        {% endfor %}
+        {{ form.submit(class='form-btn', value='Зарегистрироваться →') }}
+      </form>
+
+      <div class="form-footer">
+        Уже есть аккаунт? <a href="{{ url_for('login') }}">Войти</a>
+      </div>
+    </section>
+  </main>
+  <script src="{{ url_for('static', filename='js/app.js', v='cookie-random') }}"></script>
+</body>
+</html>

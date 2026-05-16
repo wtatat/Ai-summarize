@@ -1,0 +1,423 @@
+{% extends "base.html" %}
+{% block title %}Сводка — Brief.{% endblock %}
+{% set active_page = 'summary' %}
+{% set nav_label = 'Сводка' %}
+
+{% block content %}
+<div class="page-header">
+  <div>
+    <div class="page-meta">AI · Dispatch · v.1</div>
+    <h1 class="page-title small">Сводка<br>за сегодня</h1>
+  </div>
+  <div class="page-date">
+    <span id="newsAnalyzed">{{ news_count }}</span> материалов<br>
+    <span id="selectedSummary">по всем темам</span>
+  </div>
+</div>
+
+<div class="summary-page">
+  <div class="summary-hero">
+    <div class="eyebrow">Темы</div>
+  </div>
+
+  <div class="filter-row" style="padding-left:0;padding-right:0;">
+    {% for tid, emoji, label in topics %}
+      {% set cnt = news_count if tid == 'all' else topic_counts.get(tid, 0) %}
+      <button type="button" data-topic="{{ tid }}" class="pill topic-pill">
+        {{ label }}{% if cnt %}<span class="pill-count">{{ cnt }}</span>{% endif %}
+      </button>
+    {% endfor %}
+  </div>
+
+  <div id="idlePanel" class="summary-box center">
+    <div class="eyebrow" style="color:var(--ink-3);">GPT · ~6 сек</div>
+    <h2 style="font-family:var(--f-display);font-size:26px;font-weight:400;line-height:1.05;margin:10px 0 8px;">Сгенерировать сводку</h2>
+    <p style="max-width:360px;margin:0 auto;color:var(--ink-3);font-size:13px;">47 материалов превратятся в одну короткую выжимку с главными сюжетами и тезисами.</p>
+    <div class="summary-includes">
+      <div><span>01</span><span>Главные сюжеты дня — одним абзацем</span></div>
+      <div><span>02</span><span>Тематические разделы с тезисами</span></div>
+      <div><span>03</span><span>Цифры и факты, выделенные курсивом</span></div>
+      <div><span>04</span><span>Кэш на 24 часа — без повторной генерации</span></div>
+    </div>
+    <button id="genBtn" type="button" class="btn btn-primary" style="margin-top:22px;min-width:220px;">Сгенерировать сводку →</button>
+  </div>
+
+  <div id="loadPanel" class="summary-box" style="display:none;">
+    <div class="summary-header">
+      <div class="ai-badge" id="loadLabel">Анализирую {{ news_count }} материалов</div>
+      <span style="margin-left:auto;color:var(--ink-3);font-family:var(--f-mono);font-size:11px;" id="loadPct">0%</span>
+    </div>
+    <div class="progress-bar">
+      <div class="progress-fill" id="progressBar" style="width:0%"></div>
+    </div>
+    <div style="margin-top:14px;">
+      {% for tid, p, label in [
+        ('s20', 20, 'Сбор новостей из источников'),
+        ('s40', 40, 'Категоризация по темам'),
+        ('s60', 60, 'Выделение ключевых тезисов'),
+        ('s80', 80, 'Генерация сводки'),
+        ('s100', 100, 'Финальная вычитка')
+      ] %}
+        <div class="load-step" id="{{ tid }}" data-threshold="{{ p }}">
+          <span>0{{ loop.index }}</span>
+          <span>{{ label }}</span>
+          <span class="line"></span>
+          <span>✓</span>
+        </div>
+      {% endfor %}
+    </div>
+  </div>
+
+  <div id="resultPanel" class="summary-box" style="display:none;">
+    <div class="summary-header">
+      <div class="ai-badge" style="background:var(--signal);">AI · Готово</div>
+      <span style="color:var(--ink-3);font-family:var(--f-mono);font-size:11px;" id="resultMeta"></span>
+      <div style="margin-left:auto;display:flex;gap:6px;">
+        <button id="btnCopy" type="button" class="btn btn-ghost" style="min-height:30px;padding:0 9px;" title="Копировать">⧉</button>
+        <button id="btnRegen" type="button" class="btn btn-ghost" style="min-height:30px;padding:0 9px;" title="Перегенерировать">↻</button>
+        <button id="btnClose" type="button" class="btn btn-ghost" style="min-height:30px;padding:0 9px;" title="Закрыть">×</button>
+      </div>
+    </div>
+    <div id="summaryText"></div>
+    <div class="summary-chat">
+      <div class="section-title" style="margin:18px 0 8px;">Уточнить детали</div>
+      <div id="summaryChatMessages" class="summary-chat-messages"></div>
+      <form id="summaryChatForm" class="summary-chat-form">
+        <input id="summaryChatInput" class="form-input" type="text" placeholder="Спросить по этой сводке..." autocomplete="off">
+        <button class="btn btn-primary" type="submit">Спросить</button>
+      </form>
+    </div>
+    <button id="btnRegenBig" type="button" class="btn btn-ghost" style="width:100%;margin-top:18px;">Перегенерировать</button>
+  </div>
+</div>
+{% endblock %}
+
+{% block scripts %}
+<script>
+const idlePanel = document.getElementById("idlePanel");
+const genBtn = document.getElementById("genBtn");
+const loadPanel = document.getElementById("loadPanel");
+const resultPanel = document.getElementById("resultPanel");
+const summaryText = document.getElementById("summaryText");
+const progressBar = document.getElementById("progressBar");
+const loadPct = document.getElementById("loadPct");
+const loadLabel = document.getElementById("loadLabel");
+const newsAnalyzedEl = document.getElementById("newsAnalyzed");
+const selectedSummaryEl = document.getElementById("selectedSummary");
+const resultMeta = document.getElementById("resultMeta");
+const summaryChatMessages = document.getElementById("summaryChatMessages");
+const summaryChatForm = document.getElementById("summaryChatForm");
+const summaryChatInput = document.getElementById("summaryChatInput");
+
+const topicCounts = {{ topic_counts|tojson }};
+const topicLabels = {{ topic_labels|tojson }};
+const totalCount = {{ news_count }};
+let selected = new Set({{ selected_topics|tojson }});
+let progressFrame = null;
+let progressValue = 0;
+let generationRun = 0;
+let latestSummaryText = "";
+let currentSummaryStream = null;
+
+function getSelectedParam() {
+  return (selected.size === 0 || selected.has("all")) ? "all" : Array.from(selected).join(",");
+}
+
+function recalcStats() {
+  let count;
+  let label;
+  if (selected.size === 0 || selected.has("all")) {
+    count = totalCount;
+    label = "по всем темам";
+  } else {
+    count = Array.from(selected).reduce((s, t) => s + (topicCounts[t] || 0), 0);
+    label = Array.from(selected).map(t => (topicLabels[t] || t).toLowerCase()).join(", ");
+  }
+  newsAnalyzedEl.textContent = count;
+  selectedSummaryEl.textContent = label;
+}
+
+function updatePillStyles() {
+  document.querySelectorAll(".topic-pill").forEach(btn => {
+    const id = btn.dataset.topic;
+    const active = id === "all" ? (selected.size === 0 || selected.has("all")) : selected.has(id);
+    btn.classList.toggle("pill-default", active);
+  });
+}
+
+document.querySelectorAll(".topic-pill").forEach(btn => {
+  btn.addEventListener("click", () => {
+    const id = btn.dataset.topic;
+    if (id === "all") {
+      selected.clear();
+      selected.add("all");
+    } else {
+      selected.delete("all");
+      selected.has(id) ? selected.delete(id) : selected.add(id);
+      if (selected.size === 0) selected.add("all");
+    }
+    updatePillStyles();
+    recalcStats();
+    if (currentSummaryStream) {
+      currentSummaryStream.close();
+      currentSummaryStream = null;
+    }
+    resultPanel.style.display = "none";
+    idlePanel.style.display = "";
+    const param = getSelectedParam();
+    history.replaceState(null, "", param === "all" ? location.pathname : `${location.pathname}?topics=${encodeURIComponent(param)}`);
+  });
+});
+
+function setProgress(p) {
+  const v = Math.max(0, Math.min(100, p));
+  progressValue = v;
+  progressBar.style.width = `${v}%`;
+  loadPct.textContent = `${Math.round(v)}% · осталось ~${Math.max(1, Math.ceil((100 - v) / 18))} сек`;
+  document.querySelectorAll(".load-step").forEach(el => {
+    const th = Number(el.dataset.threshold);
+    const done = v >= th;
+    const active = !done && v >= th - 20;
+    el.style.color = done ? "var(--ink-2)" : (active ? "var(--ink)" : "var(--ink-3)");
+    el.querySelector(".line").style.background = done ? "var(--ink-2)" : (active ? "var(--signal)" : "var(--rule)");
+  });
+}
+
+function startProgress(runId) {
+  const startedAt = performance.now();
+  const expectedMs = Math.max(5500, Math.min(22000, 3500 + (parseInt(newsAnalyzedEl.textContent, 10) || 0) * 75));
+  function tick(now) {
+    if (runId !== generationRun) return;
+    const ratio = Math.min((now - startedAt) / expectedMs, 1);
+    setProgress(Math.max(progressValue, Math.min(88, (1 - Math.pow(1 - ratio, 2.2)) * 88)));
+    progressFrame = requestAnimationFrame(tick);
+  }
+  progressFrame = requestAnimationFrame(tick);
+}
+
+function finishProgress(runId, callback) {
+  if (progressFrame) cancelAnimationFrame(progressFrame);
+  const from = progressValue;
+  const startedAt = performance.now();
+  function tick(now) {
+    if (runId !== generationRun) return;
+    const ratio = Math.min((now - startedAt) / Math.max(700, (100 - from) * 20), 1);
+    setProgress(from + (100 - from) * ratio);
+    if (ratio < 1) progressFrame = requestAnimationFrame(tick);
+    else callback();
+  }
+  progressFrame = requestAnimationFrame(tick);
+}
+
+function escapeHtml(s) {
+  return String(s || "").replace(/&/g, "&amp;").replace(/</g, "&lt;").replace(/>/g, "&gt;").replace(/"/g, "&quot;").replace(/'/g, "&#039;");
+}
+
+function renderInlineMarkdown(s) {
+  return escapeHtml(s)
+    .replace(/`([^`]+)`/g, "<code>$1</code>")
+    .replace(/\*\*([^*]+)\*\*/g, "<strong>$1</strong>")
+    .replace(/(^|[^*])\*([^*\n]+)\*/g, "$1<em>$2</em>");
+}
+
+function renderMarkdown(value) {
+  return String(value || "").trim().split(/\n{2,}/).map(block => {
+    const lines = block.split("\n").map(line => line.trim()).filter(Boolean);
+    if (!lines.length) return "";
+    if (lines.every(line => /^[-*+]\s+/.test(line))) {
+      return `<ul class="summary-list">${lines.map(line => `<li>${renderInlineMarkdown(line.replace(/^[-*+]\s+/, ""))}</li>`).join("")}</ul>`;
+    }
+    const h = lines.length === 1 && lines[0].match(/^(#{1,3})\s+(.+)$/);
+    if (h) return `<h3 style="font-family:var(--f-display);font-size:22px;font-weight:400;margin:18px 0 8px;">${renderInlineMarkdown(h[2])}</h3>`;
+    return `<p style="color:var(--ink-2);font-size:14px;line-height:1.58;margin:8px 0;">${lines.map(renderInlineMarkdown).join("<br>")}</p>`;
+  }).join("");
+}
+
+function showSummary(text, streaming = false) {
+  latestSummaryText = text;
+  summaryText.innerHTML = renderMarkdown(text) || `<p style="color:var(--ink-3);font-size:14px;line-height:1.58;margin:8px 0;">Сводка появляется в реальном времени...</p>`;
+  loadPanel.style.display = streaming ? "" : "none";
+  idlePanel.style.display = "none";
+  resultPanel.style.display = "";
+  resultMeta.textContent = streaming ? `${newsAnalyzedEl.textContent} → поток` : `${newsAnalyzedEl.textContent} → 1 сводка`;
+}
+
+function cacheKey() {
+  return `summary:${getSelectedParam()}`;
+}
+
+function getCachedSummary() {
+  try {
+    const raw = localStorage.getItem(cacheKey());
+    if (!raw) return null;
+    const s = JSON.parse(raw);
+    if (!s.text || !s.createdAt || Date.now() - s.createdAt > 24 * 60 * 60 * 1000) return null;
+    return s.text;
+  } catch (e) {
+    return null;
+  }
+}
+
+function saveCachedSummary(text) {
+  try { localStorage.setItem(cacheKey(), JSON.stringify({ text, createdAt: Date.now() })); } catch (e) {}
+}
+
+function addChatMessage(role, text) {
+  const item = document.createElement("div");
+  item.className = `summary-chat-message ${role}`;
+  const label = role === "user" ? "Вы" : "Brief AI";
+  item.innerHTML = `<div class="summary-chat-role">${label}</div><div class="summary-chat-bubble"></div>`;
+  const bubble = item.querySelector(".summary-chat-bubble");
+  if (role === "user") bubble.textContent = text;
+  else bubble.innerHTML = renderMarkdown(text);
+  summaryChatMessages.append(item);
+  summaryChatMessages.scrollTop = summaryChatMessages.scrollHeight;
+  return bubble;
+}
+
+function parseSseBlock(block) {
+  let name = "message";
+  const data = [];
+  block.split("\n").forEach(line => {
+    if (line.startsWith("event:")) name = line.slice(6).trim();
+    if (line.startsWith("data:")) data.push(line.slice(5).trim());
+  });
+  if (!data.length) return null;
+  return { name, data: JSON.parse(data.join("\n")) };
+}
+
+async function askSummaryQuestion(event) {
+  event.preventDefault();
+  const question = summaryChatInput.value.trim();
+  if (!question) return;
+  summaryChatInput.value = "";
+  summaryChatInput.disabled = true;
+  addChatMessage("user", question);
+  const answerBubble = addChatMessage("assistant", "Думаю...");
+  let answer = "";
+
+  try {
+    const response = await fetch("/api/summary-chat-stream", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ question, summary: latestSummaryText }),
+    });
+    if (!response.ok) throw new Error(`HTTP ${response.status}`);
+    const reader = response.body.getReader();
+    const decoder = new TextDecoder();
+    let buffer = "";
+
+    while (true) {
+      const { value, done } = await reader.read();
+      buffer += decoder.decode(value || new Uint8Array(), { stream: !done });
+      const blocks = buffer.split("\n\n");
+      buffer = blocks.pop();
+      blocks.forEach(block => {
+        const event = parseSseBlock(block);
+        if (!event || event.name !== "chunk") return;
+        answer += event.data;
+        answerBubble.innerHTML = renderMarkdown(answer);
+        summaryChatMessages.scrollTop = summaryChatMessages.scrollHeight;
+      });
+      if (done) break;
+    }
+    if (!answer) answerBubble.textContent = "Ответ пустой. Попробуйте спросить иначе.";
+  } catch (e) {
+    answerBubble.textContent = `Ошибка: ${e.message}`;
+  } finally {
+    summaryChatInput.disabled = false;
+    summaryChatInput.focus();
+  }
+}
+
+async function generate() {
+  const runId = ++generationRun;
+  if (currentSummaryStream) currentSummaryStream.close();
+  if (progressFrame) cancelAnimationFrame(progressFrame);
+  summaryChatMessages.innerHTML = "";
+  idlePanel.style.display = "none";
+  loadPanel.style.display = "";
+  loadLabel.textContent = `Анализирую ${newsAnalyzedEl.textContent} материалов`;
+  setProgress(0);
+  startProgress(runId);
+  showSummary("", true);
+
+  if (!window.EventSource) {
+    let text;
+    let shouldCache = false;
+    try {
+      const r = await fetch(`/api/summarize/${encodeURIComponent(getSelectedParam())}`);
+      const d = await r.json();
+      if (!r.ok) throw new Error(d.message || `HTTP ${r.status}`);
+      text = d.summary;
+      shouldCache = Boolean(text);
+    } catch (e) {
+      text = `Ошибка: ${e.message}`;
+    }
+    finishProgress(runId, () => {
+      if (shouldCache) saveCachedSummary(text);
+      showSummary(text);
+    });
+    return;
+  }
+
+  let text = "";
+  let finished = false;
+  const source = new EventSource(`/api/summarize-stream/${encodeURIComponent(getSelectedParam())}?t=${Date.now()}`);
+  currentSummaryStream = source;
+
+  source.addEventListener("meta", event => {
+    const meta = JSON.parse(event.data);
+    loadLabel.textContent = `Генерирую ${meta.count} материалов в реальном времени`;
+  });
+
+  source.addEventListener("chunk", event => {
+    if (runId !== generationRun) {
+      source.close();
+      return;
+    }
+    text += JSON.parse(event.data);
+    latestSummaryText = text;
+    summaryText.innerHTML = renderMarkdown(text);
+    setProgress(Math.max(progressValue, Math.min(96, 18 + text.length / 8)));
+  });
+
+  source.addEventListener("done", event => {
+    if (runId !== generationRun) return;
+    finished = true;
+    source.close();
+    currentSummaryStream = null;
+    const payload = JSON.parse(event.data);
+    text = payload.summary || text;
+    finishProgress(runId, () => {
+      if (text) saveCachedSummary(text);
+      showSummary(text);
+    });
+  });
+
+  source.onerror = () => {
+    if (finished || runId !== generationRun) return;
+    source.close();
+    currentSummaryStream = null;
+    const message = text || "Ошибка: поток генерации оборвался";
+    finishProgress(runId, () => showSummary(message));
+  };
+}
+
+updatePillStyles();
+recalcStats();
+const cached = getCachedSummary();
+if (cached) showSummary(cached);
+genBtn.addEventListener("click", generate);
+summaryChatForm.addEventListener("submit", askSummaryQuestion);
+document.getElementById("btnRegen").addEventListener("click", generate);
+document.getElementById("btnRegenBig").addEventListener("click", generate);
+document.getElementById("btnClose").addEventListener("click", () => {
+  resultPanel.style.display = "none";
+  idlePanel.style.display = "";
+});
+document.getElementById("btnCopy").addEventListener("click", () => {
+  navigator.clipboard.writeText(latestSummaryText || summaryText.textContent);
+});
+</script>
+{% endblock %}
