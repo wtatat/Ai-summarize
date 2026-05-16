@@ -62,36 +62,49 @@ def redirect_guests_to_register():
 
 @app.context_processor
 def inject_globals():
-    s = db_session.create_session()
-
-    unread = 0
-    notification_unread_count = 0
-    if current_user.is_authenticated:
-        u = s.query(User).get(current_user.id)
-        if u:
-            read_ids = {n.id for n in u.read_news}
-            unread = s.query(NewsItem).filter(~NewsItem.id.in_(read_ids) if read_ids else true()).count()
-            notification_unread_count = (s.query(Notification)
-                                         .filter(Notification.user_id == u.id,
-                                                 Notification.is_read.is_(False))
-                                         .count())
-
-    counts = dict(s.query(NewsItem.topic, func.count(NewsItem.id)).group_by(NewsItem.topic).all())
-    sidebar_topics = [(tid, emoji, label, counts.get(tid, 0))
-                      for tid, emoji, label in TOPICS if tid != 'all']
-
-    sidebar_sources = (s.query(Source)
-                       .filter(Source.is_active.is_(True))
-                       .order_by(Source.id).limit(8).all())
-    sidebar_total_news = s.query(NewsItem).count()
-
-    return {
-        'unread_count': unread,
-        'sidebar_topics': sidebar_topics,
-        'sidebar_sources': sidebar_sources,
-        'sidebar_total_news': sidebar_total_news,
-        'notification_unread_count': notification_unread_count,
+    import traceback as _tb
+    defaults = {
+        'unread_count': 0,
+        'sidebar_topics': [],
+        'sidebar_sources': [],
+        'sidebar_total_news': 0,
+        'notification_unread_count': 0,
     }
+    try:
+        s = db_session.create_session()
+
+        unread = 0
+        notification_unread_count = 0
+        if current_user.is_authenticated:
+            u = s.query(User).get(current_user.id)
+            if u:
+                read_ids = {n.id for n in u.read_news}
+                unread = s.query(NewsItem).filter(~NewsItem.id.in_(read_ids) if read_ids else true()).count()
+                notification_unread_count = (s.query(Notification)
+                                             .filter(Notification.user_id == u.id,
+                                                     Notification.is_read.is_(False))
+                                             .count())
+
+        counts = dict(s.query(NewsItem.topic, func.count(NewsItem.id)).group_by(NewsItem.topic).all())
+        sidebar_topics = [(tid, emoji, label, counts.get(tid, 0))
+                          for tid, emoji, label in TOPICS if tid != 'all']
+
+        sidebar_sources = (s.query(Source)
+                           .filter(Source.is_active.is_(True))
+                           .order_by(Source.id).limit(8).all())
+        sidebar_total_news = s.query(NewsItem).count()
+
+        return {
+            'unread_count': unread,
+            'sidebar_topics': sidebar_topics,
+            'sidebar_sources': sidebar_sources,
+            'sidebar_total_news': sidebar_total_news,
+            'notification_unread_count': notification_unread_count,
+        }
+    except Exception:
+        print('[inject_globals ERROR]', flush=True)
+        _tb.print_exc()
+        return defaults
 
 @app.route('/cookie-image.png')
 @app.route('/куки.png')
@@ -570,7 +583,7 @@ def too_large(_):
 def internal_error(e):
     import traceback
     traceback.print_exc()
-    return render_template('error.html', code=500, msg='Внутренняя ошибка сервера'), 500
+    return '<h1>500 — Внутренняя ошибка сервера</h1><p>Смотри логи для деталей.</p>', 500
 
 def init_app():
     os.makedirs('db', exist_ok=True)
