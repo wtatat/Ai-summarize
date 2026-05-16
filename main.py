@@ -8,7 +8,7 @@ from flask_login import LoginManager, login_user, logout_user, login_required, c
 from flask_restful import Api
 from werkzeug.utils import secure_filename
 from dotenv import load_dotenv
-from sqlalchemy import func
+from sqlalchemy import func, true
 
 from data import db_session
 from data.news import NewsItem
@@ -70,7 +70,7 @@ def inject_globals():
         u = s.query(User).get(current_user.id)
         if u:
             read_ids = {n.id for n in u.read_news}
-            unread = s.query(NewsItem).filter(~NewsItem.id.in_(read_ids) if read_ids else True).count()
+            unread = s.query(NewsItem).filter(~NewsItem.id.in_(read_ids) if read_ids else true()).count()
             notification_unread_count = (s.query(Notification)
                                          .filter(Notification.user_id == u.id,
                                                  Notification.is_read.is_(False))
